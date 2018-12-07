@@ -1,0 +1,87 @@
+#!/bin/bash
+#file=$1
+
+#Separators
+d_="-"
+c_="#c"
+t_="***"
+m_="@"
+
+for file in "$@" ; do #Run for every file provided
+	 if [ ! -d "$file" ] && [ -f "$file" ] ; then
+		 #
+			#Extract data and set whole bunch of flags
+			file_ext="$(echo ${file##*.} | tr '[A-Z]' '[a-z]')" #Store original file extension
+			file_name="${file%.*}" #Store original file name without extension
+			generated_uuid=$(uuidgen) #Generate random UUID for regular photos
+			exiftag_mime=$(exiftool -mimetype -s3 -m $file); [[ $exiftag_mime =~ /video/i ]]; movie=$? #Check MIME and set movie flag
+			exiftag_burstuuid=$(exiftool -burstuuid -s3 -m $file); [ ${#exiftag_burstuuid} -gt 1 ] && burstphoto=true || burstphoto=false
+			exiftag_contentid=$(exiftool -contentidentifier -s3 -m $file); [[ ${#exiftag_contentid} -gt 1 ]]; livephoto=$? #Check for Content Identifier, this indicates picture/movie is part of a live photo pair, Set livephoto flag
+			exiftag_createdate=$(exiftool -s3 -m -d %Y$d_%m$d_%d$d_%H$d_%M$d_%S -createdate $file )
+			exiftag_datetimeorignal=$(exiftool -s3 -m -d %Y$d_%m$d_%d$d_%H$d_%M$d_%S -datetimeoriginal $file )
+			exiftag_filetype=$(exiftool -p '${filetype;tr/a-z/A-Z/}' -s3 -m $file)
+
+			#Set the MIME label and UUID
+			if [[ $lifephoto ]]; then
+				asset_class="LIVEPHOTO"
+				uuid=$exiftag_contentid
+				echo "+$asset_class: $uuid"
+			elif [[ $burstphoto = 1 ]]; then
+				asset_class="BURST"
+				uuid=$exiftag_burstuuid
+				echo "_$asset_class: $uuid"
+			elif [[ $movie ]]; then
+				asset_class="MOVIE"
+				uuid=$generated_uuid
+				echo "_$asset_class: $uuid"
+			else
+				asset_class="PHOTO"
+				uuid=$generated_uuid
+				echo "$asset_class: $uuid"
+			fi
+
+			#Rename the file
+			if [ ${#exiftag_createdate} -gt 1 ]; then
+				exif_command="exiftool -m '-testname<\${CreateDate#;DateFmt(\"%Y$d_%m$d_%d$d_%H$d_%M$d_%S\")}$d_%.2C$t_$asset_class$t_$uuid$m_$exiftag_filetype.%le'"
+			else
+				exif_command="exiftool -m '-testname<\${DateTimeOriginal#;DateFmt(\"%Y$d_%m$d_%d$d_%H$d_%M$d_%S\")}$d_%.2C$t_$asset_class$t_$uuid$m_$exiftag_filetype.%le'"
+			fi
+
+			# -tagsfromfile $file $file_name.mov
+
+			if [[ $livephoto ]] && [[ ! $movie ]]; then #We have Live Photo (note we skip if we are looking at the movie as it is dealt once the photo is processed)
+				echo "Live Photo Content ID: $contentid"
+				eval "$exif_command -tagsfromfile $file $file_name.mov >> rename_media.log"
+				eval "$exif_command $file >> rename_media.log"
+				#eval "exiftool '-testname<\${DateTimeOriginal#;DateFmt(\"%Y-%m-%d-%H-%M-%S\")}#%.2C***LIVEPHOTO***\${contentidentifier}@\${filetype;tr/a-z/A-Z/}.%le' -m -tagsfromfile $file $file_name.mov"
+				#eval "exiftool '-testname<\${DateTimeOriginal#;DateFmt(\"%Y-%m-%d-%H-%M-%S\")}#%.2C***LIVEPHOTO***\${contentidentifier}@\${filetype;tr/a-z/A-Z/}.%le' -m $file"
+			elif [[ $burstphoto ]]; then #We have a burst of photos
+				echo "Burst UUID: $uuid"
+				echo "$exif_command $file"
+				eval "$exif_command $file >> rename_media.log"
+				#eval "exiftool '-testname<\${DateTimeOriginal#;DateFmt(\"%Y-%m-%d-%H-%M-%S\")}#%.2C***BURST***\${burstuuid}@\${filetype;tr/a-z/A-Z/}.%le' -m $file"
+			elif [[ $video ]]; then #This should be a pure video
+				echo "Video UUID: $uuid"
+				echo "$exif_command $file"
+				eval "$exif_command $file >> rename_media.log"
+				#eval "exiftool '-testname<\${MediaCreateDate#;DateFmt(\"%Y-%m-%d-%H-%M-%S\")}#%.2C***MOVIE***$uuid@\${filetype;tr/a-z/A-Z/}.%le' -m $file"
+			else #This should be a photo
+				echo "Photo UUID: $uuid"
+				echo "$exif_command $file"
+				eval "$exif_command $file >> rename_media.log"
+				#eval "exiftool '-testname<\${DateTimeOriginal#;DateFmt(\"%Y-%m-%d-%H-%M-%S\")}#%.2C***PHOTO***$uuid@\${filetype;tr/a-z/A-Z/}.%le' -m $file"
+			fi
+		fi
+done
+
+exif_tool () {
+	test=$1 #true or false
+	date=$2 #CreateDate or DateTameOriginal
+	file=$3 #File to process
+	logfile=$3 #Log file
+
+	[[ $test ]] && teststring=testname || teststring=filename
+
+	eval "exiftool -m '-$teststring<\${$date#;DateFmt(\"%Y$d_%m$d_%d$d_%H$d_%M$d_%S\")}$d_%.2C$t_$asset_class$t_$uuid$m_$exiftag_filetype.%le' >> $logfile"
+
+}

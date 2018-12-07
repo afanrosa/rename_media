@@ -1,0 +1,7 @@
+docker run -it --rm --name icloud -v $(pwd)/Photos:/data ndbroadbent/icloudpd:latest \
+    icloudpd /data \
+    --username=ja@afanrosa.com \
+    --password=sqww-luui-kquk-ikdd \
+    --size=original \
+    --recent 50 \
+    --only-print-filenames
