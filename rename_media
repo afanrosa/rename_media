@@ -1,6 +1,8 @@
 #!/bin/bash
 #file=$1
 
+#version = 2.0
+
 #Separators
 d_="-"
 c_="#c"
